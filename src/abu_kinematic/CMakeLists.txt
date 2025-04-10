@@ -28,6 +28,7 @@ ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
   scripts/dummy_script.py
+  scripts/abu_kinematic.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
