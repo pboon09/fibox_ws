@@ -126,7 +126,7 @@ class ManiNode(Node):
                 
                 if tracking_data is not None and vis_img is not None:
                     # Flip image 180 degrees
-                    vis_img_flipped = cv2.rotate(vis_img, cv2.ROTATE_180)
+                    vis_img_flipped = cv2.flip(vis_img, 0)
                     
                     # Update shared data with thread lock
                     with self.vision_lock:
@@ -223,12 +223,12 @@ class ManiNode(Node):
         x_pressed = msg.buttons[3]
         y_pressed = msg.buttons[4]
         
-        if a_pressed and not self.prev_a:
-            if not self.shoot_active and not self.spin_active and not self.realsense_active:
-                self.get_logger().info("A pressed - Checking for target detection")
-                self.check_and_execute_realsense()
-            else:
-                self.get_logger().info("A pressed - Another sequence is already active")
+        # if a_pressed and not self.prev_a:
+        #     if not self.shoot_active and not self.spin_active and not self.realsense_active:
+        #         self.get_logger().info("A pressed - Checking for target detection")
+        #         self.check_and_execute_realsense()
+        #     else:
+        #         self.get_logger().info("A pressed - Another sequence is already active")
         
         if x_pressed and not self.prev_square:
             if not self.shoot_active and not self.spin_active and not self.realsense_active:
