@@ -3,11 +3,11 @@
 
 # --- การตั้งค่าโมเดล ---
 # YOLO_MODEL_PATH = r"yolo11l.pt"  # ตำแหน่งไฟล์โมเดล YOLO -> สำหรับ Development (ให้เปลี่ยนเป็น best.pt ตอนใช้งานจริง)
-YOLO_MODEL_PATH = r"best.pt"  # ตำแหน่งไฟล์โมเดล YOLO -> สำหรับ Production (ให้เปลี่ยนเป็น yolo11l.pt ตอนใช้งานจริง)
+YOLO_MODEL_PATH = '/home/pboon09/Documents/GitHub/fibox_ws/src/final_mani/final_mani/best.pt'
 DEPTH_MODEL_PATH = './model/final_calibrated_depth_model_outdoor_v2' # ตำแหน่งไฟล์โมเดล Regression สำหรับ Depth
 
 # --- การตั้งค่า YOLO ---
-CONF_THRESHOLD = 0.15           # ค่าความมั่นใจขั้นต่ำในการยอมรับผลการตรวจจับ
+CONF_THRESHOLD = 0.25           # ค่าความมั่นใจขั้นต่ำในการยอมรับผลการตรวจจับ
 TARGET_CLASS_NAME = 'basketball_hoop'    # ชื่อคลาสของวัตถุเป้าหมายที่ต้องการตรวจจับ -> สำหรับ Development (ให้เปลี่ยนเป็น basketball_hoop ตอนใช้งานจริง)
 
 # --- การตั้งค่ากล้อง ---

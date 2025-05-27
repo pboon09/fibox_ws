@@ -2,7 +2,7 @@
 # คำอธิบาย: คลาสสำหรับจัดการการเชื่อมต่อและอ่านเฟรมจากแหล่งภาพต่างๆ
 
 import cv2
-import config # Import การตั้งค่า เช่น Camera ID, Frame Size, FPS, Video Path
+from final_mani import config
 import time
 import numpy as np
 

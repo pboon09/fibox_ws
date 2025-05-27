@@ -4,16 +4,16 @@
 import math
 import numpy as np
 import cv2
-from camera_handler import CameraHandler
-from object_detector import ObjectDetector
-from depth_estimator import DepthEstimator
-import visualization as vis  # Import the visualization module
+from final_mani.camera_handler import CameraHandler
+from final_mani.object_detector import ObjectDetector
+from final_mani.depth_estimator import DepthEstimator
+import final_mani.visualization as vis  # Import the visualization module
 
 class VisionPipeline:
     """
     Class to handle the vision pipeline, using all components to process inputs and return coordinates
     """
-    def __init__(self, camera_type='realsense', target_class='person', enable_visualization=False, enable_save_video=False):
+    def __init__(self, camera_type='realsense', target_class='basketball_hoop', enable_visualization=False, enable_save_video=False):
         """
         Initialize the vision pipeline
         

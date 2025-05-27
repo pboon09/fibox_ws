@@ -81,8 +81,8 @@ class OmniRobotKinematics(Node):
             self.vy = msg.axes[0] * 1.0  # Left stick X-axis (left/right)
         
         if len(msg.buttons) >= 6:
-            l1_pressed = msg.buttons[4]  # L1 button
-            l2_pressed = msg.buttons[5]  # L2 button
+            l1_pressed = msg.buttons[6]  # L1 button
+            l2_pressed = msg.buttons[7]  # L2 button
             
             if l1_pressed and not self.prev_l1:
                 self.target_heading -= math.pi/2  # Rotate -90 degrees

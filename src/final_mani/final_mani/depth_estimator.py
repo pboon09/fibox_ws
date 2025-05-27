@@ -3,8 +3,8 @@
 
 import numpy as np
 import pandas as pd
-import config  # Import การตั้งค่า
-import utils   # Import ฟังก์ชันช่วยเหลือ เช่น estimate_z_from_bbox
+from final_mani import config
+from final_mani import utils
 
 # ตรวจสอบว่ามี RealSense SDK หรือไม่ (สำหรับ type hint หรือ logic อื่นๆ ถ้าจำเป็น)
 try:
