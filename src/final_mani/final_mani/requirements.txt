@@ -1,0 +1,18 @@
+# ไฟล์: requirements.txt
+# คำอธิบาย: Dependencies สำหรับโปรเจกต์ Real-time Object XYZ Tracking
+
+# --- ไลบรารีหลัก ---
+numpy
+opencv-python
+torch
+torchvision
+ultralytics # สำหรับ YOLOv8 หรือใหม่กว่า
+pandas
+
+# --- ไลบรารีเสริม / เฉพาะทาง ---
+# pyrealsense2 # หากใช้กล้อง Intel RealSense
+# pycaret[full] # หากใช้โมเดล Regression สำหรับประมาณค่า Depth
+
+# ตรวจสอบให้แน่ใจว่าเวอร์ชัน torch และ torchvision เข้ากันได้กับเวอร์ชัน CUDA
+# หากต้องการใช้การเร่งความเร็วด้วย GPU ติดตั้งโดยใช้คำสั่งอย่างเป็นทางการ
+# จากเว็บไซต์ PyTorch: https://pytorch.org/get-started/locally/

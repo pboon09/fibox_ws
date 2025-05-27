@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(abu_kinematic)
+project(final_mobile)
 
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
@@ -28,7 +28,7 @@ ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
   scripts/dummy_script.py
-  scripts/abu_kinematic.py
+  scripts/mobile_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

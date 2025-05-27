@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from abu_kinematic.dummy_module import dummy_function, dummy_var
+from final_mobile.dummy_module import dummy_function, dummy_var
 import rclpy
 from rclpy.node import Node
 
