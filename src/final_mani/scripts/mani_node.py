@@ -16,7 +16,8 @@ class ManiNode(Node):
     def __init__(self):
         super().__init__('mani_node')
 
-        self.max_speed = 255.0
+        self.shoot_speed = 255.0
+        self.push_speed = 255.0
         self.toggle_speed = 120.0
         
         self.prev_square = False
@@ -223,12 +224,12 @@ class ManiNode(Node):
         x_pressed = msg.buttons[3]
         y_pressed = msg.buttons[4]
         
-        # if a_pressed and not self.prev_a:
-        #     if not self.shoot_active and not self.spin_active and not self.realsense_active:
-        #         self.get_logger().info("A pressed - Checking for target detection")
-        #         self.check_and_execute_realsense()
-        #     else:
-        #         self.get_logger().info("A pressed - Another sequence is already active")
+        if a_pressed and not self.prev_a:
+            if not self.shoot_active and not self.spin_active and not self.realsense_active:
+                self.get_logger().info("A pressed - Checking for target detection")
+                self.check_and_execute_realsense()
+            else:
+                self.get_logger().info("A pressed - Another sequence is already active")
         
         if x_pressed and not self.prev_square:
             if not self.shoot_active and not self.spin_active and not self.realsense_active:
@@ -293,9 +294,9 @@ class ManiNode(Node):
             self.get_logger().info(f"RealSense Step 1: Target heading sent = {angle}")
             
             min_speed = 50.0
-            max_speed = 200.0
+            shoot_speed = 200.0
             if z > 0:
-                computed_speed = max(min_speed, min(max_speed, max_speed * (1.0 / z) * 100))
+                computed_speed = max(min_speed, min(shoot_speed, shoot_speed * (1.0 / z) * 100))
             else:
                 computed_speed = min_speed
             
@@ -306,13 +307,13 @@ class ManiNode(Node):
             time.sleep(4.0)
             
             self.get_logger().info("RealSense Step 4: Motor 1 ON")
-            self.set_motor_speeds([-self.max_speed, computed_speed, computed_speed])
+            self.set_motor_speeds([-self.push_speed, computed_speed, computed_speed])
             
             self.get_logger().info("RealSense Step 5: Wait 4 seconds")
             time.sleep(4.0)
             
             self.get_logger().info("RealSense Step 6: Motor1 = 255, Motor2&3 = 0")
-            self.set_motor_speeds([self.max_speed, 0.0, 0.0])
+            self.set_motor_speeds([self.push_speed, 0.0, 0.0])
             time.sleep(4.0)
             
             self.get_logger().info("RealSense Step 7: All motors OFF")
@@ -341,15 +342,15 @@ class ManiNode(Node):
     def shoot_sequence(self):
         try:
             self.get_logger().info("SHOOT Step 1: Motors 2&3 = 255")
-            self.set_motor_speeds([0.0, self.max_speed, self.max_speed])
+            self.set_motor_speeds([0.0, self.shoot_speed, self.shoot_speed])
             time.sleep(4.0)
             
             self.get_logger().info("SHOOT Step 2: All motors = 255")
-            self.set_motor_speeds([-self.max_speed, self.max_speed, self.max_speed])
+            self.set_motor_speeds([-self.push_speed, self.shoot_speed, self.shoot_speed])
             time.sleep(2.0)
             
             self.get_logger().info("SHOOT Step 3: Motor2&3 = 0, Motor1 = 255")
-            self.set_motor_speeds([self.max_speed, 0.0, 0.0])
+            self.set_motor_speeds([self.push_speed, 0.0, 0.0])
             time.sleep(4.0)
             
             self.get_logger().info("SHOOT Step 4: All motors OFF")
@@ -374,15 +375,15 @@ class ManiNode(Node):
     def spin_sequence(self):
         try:
             self.get_logger().info("SPIN Step 1: Motor3 = 255")
-            self.set_motor_speeds([0.0, 0.0, self.max_speed])
+            self.set_motor_speeds([0.0, 0.0, self.shoot_speed])
             time.sleep(4.0)
             
             self.get_logger().info("SPIN Step 2: Motor1&3 = 255")
-            self.set_motor_speeds([-self.max_speed, 0.0, self.max_speed])
+            self.set_motor_speeds([-self.push_speed, 0.0, self.shoot_speed])
             time.sleep(2.0)
             
             self.get_logger().info("SPIN Step 3: Motor1 = 255, Motor2&3 = 0")
-            self.set_motor_speeds([self.max_speed, 0.0, 0.0])
+            self.set_motor_speeds([self.push_speed, 0.0, 0.0])
             time.sleep(4.0)
             
             self.get_logger().info("SPIN Step 4: All motors OFF")
