@@ -12,26 +12,36 @@ class OmniKinematicsNode(Node):
         self.wheel_radius = 0.06
         self.robot_radius = 0.16
         self.max_speed = 20.0
-        self.max_angular_speed = 20.0
+        self.max_angular_speed = 30.0
         
-        # PID control variables
         self.zero_deg = None
-        self.imu_offset = None  # Store the first IMU reading as offset
-        self.current_imu_yaw = 0.0  # This will be the offset-corrected reading
-        self.raw_imu_yaw = 0.0  # Store the raw IMU reading
+        self.imu_offset = None
+        self.current_imu_yaw = 0.0
+        self.raw_imu_yaw = 0.0
         self.target_heading = 0.0
-        self.pid_kp = 0.1
-        self.pid_ki = 0.0
-        self.pid_kd = 0.0
-        self.pid_integral = 0.0
-        self.pid_last_error = 0.0
         
-        # Button state tracking
+        self.zero_pid_kp = 0.1
+        self.zero_pid_ki = 0.0
+        self.zero_pid_kd = 0.01
+        self.zero_pid_integral = 0.0
+        self.zero_pid_last_error = 0.0
+        
+        self.heading_pid_kp = 0.15
+        self.heading_pid_ki = 0.0
+        self.heading_pid_kd = 0.1
+        self.heading_pid_integral = 0.0
+        self.heading_pid_last_error = 0.0
+        
         self.button6_last_state = 0
+        self.button7_last_state = 0
         self.pid_active = False
-        self.auto_heading_active = False  # New flag for automatic heading control
+        self.auto_heading_active = False
+        self.straight_forward_active = False
+        self.straight_forward_heading = 0.0
+        self.auto_lock_active = False
+        self.locked_heading = 0.0
+        self.last_manual_rotation_time = None
         
-        # Create subscriber for joy messages
         self.joy_subscription = self.create_subscription(
             Joy,
             'joy',
@@ -39,7 +49,6 @@ class OmniKinematicsNode(Node):
             10
         )
         
-        # Create IMU subscriber
         self.imu_sub = self.create_subscription(
             Float64,
             '/imu_yaw',
@@ -47,7 +56,6 @@ class OmniKinematicsNode(Node):
             10
         )
         
-        # Create target heading subscriber
         self.target_heading_sub = self.create_subscription(
             Float64,
             '/target_head_robot',
@@ -55,17 +63,14 @@ class OmniKinematicsNode(Node):
             10
         )
         
-        # Create publisher for wheel speeds
         self.wheel_speed_publisher = self.create_publisher(
             Float64MultiArray,
             'wheel_speed',
             10
         )
         
-        # Initialize last command time for safety
         self.last_joy_time = self.get_clock().now()
         
-        # Create timer for watchdog (stop robot if no commands received)
         self.create_timer(0.1, self.watchdog_callback)
         
         self.get_logger().info('Omni Kinematics Node started')
@@ -77,17 +82,14 @@ class OmniKinematicsNode(Node):
     def imu_callback(self, msg):
         self.raw_imu_yaw = msg.data
         
-        # Set the first IMU reading as the offset (this becomes our 0 degree reference)
         if self.imu_offset is None:
             self.imu_offset = msg.data
-            self.zero_deg = 0.0  # Zero degree is now 0 after offset
-            self.current_imu_yaw = 0.0  # First reading becomes 0
+            self.zero_deg = 0.0
+            self.current_imu_yaw = 0.0
             self.get_logger().info(f'IMU offset set: {self.imu_offset:.2f}° (raw) -> 0.0° (offset)')
         else:
-            # Apply offset to get relative heading (first reading = 0°)
             self.current_imu_yaw = self.raw_imu_yaw - self.imu_offset
             
-            # Normalize to [-180, 180] degrees
             while self.current_imu_yaw > 180.0:
                 self.current_imu_yaw -= 360.0
             while self.current_imu_yaw < -180.0:
@@ -96,140 +98,229 @@ class OmniKinematicsNode(Node):
     def target_heading_callback(self, msg):
         self.target_heading = msg.data
         
-        # Auto-activate heading control when target heading is not zero
-        if abs(self.target_heading) > 0.1:  # Small threshold to avoid noise
+        if abs(self.target_heading) > 0.1:
             self.auto_heading_active = True
-            self.pid_integral = 0.0
-            self.pid_last_error = 0.0
+            self.straight_forward_active = False
+            self.auto_lock_active = False
+            self.heading_pid_integral = 0.0
+            self.heading_pid_last_error = 0.0
             self.get_logger().info(f'AUTO HEADING ACTIVATED - Target: {self.target_heading:.2f}, Current: {self.current_imu_yaw:.2f}')
         else:
-            # Target heading is 0, deactivate automatic heading control
             self.auto_heading_active = False
             self.get_logger().info('AUTO HEADING DEACTIVATED - Target heading is 0')
 
     def joy_callback(self, msg):
         self.last_joy_time = self.get_clock().now()
         
-        # Debug: show button presses
         if len(msg.buttons) > 6:
             if msg.buttons[6] == 1:
                 self.get_logger().info('Button 6 pressed!')
         
-        # Check for button 6 press to activate PID back to zero_deg
+        if len(msg.buttons) > 7:
+            if msg.buttons[7] == 1:
+                self.get_logger().info('Button 7 pressed!')
+        
         if len(msg.buttons) > 6:
             button6_current_state = msg.buttons[6]
             if button6_current_state == 1 and self.button6_last_state == 0:
-                if self.imu_offset is not None:  # Changed from zero_deg to imu_offset
-                    # Deactivate auto heading and activate manual PID to zero
+                if self.imu_offset is not None:
                     self.auto_heading_active = False
+                    self.straight_forward_active = False
+                    self.auto_lock_active = False
                     self.pid_active = True
-                    self.pid_integral = 0.0
-                    self.pid_last_error = 0.0
+                    self.zero_pid_integral = 0.0
+                    self.zero_pid_last_error = 0.0
                     self.get_logger().info(f'MANUAL PID ACTIVATED - Going back to zero: {self.zero_deg:.2f}, Current: {self.current_imu_yaw:.2f}')
                 else:
                     self.get_logger().info('Cannot activate PID - IMU offset not set yet')
             self.button6_last_state = button6_current_state
         
-        # Analog speed control using axes[5] (ranges from 1 to -1)
+        if len(msg.buttons) > 7:
+            button7_current_state = msg.buttons[7]
+            if button7_current_state == 1 and self.button7_last_state == 0:
+                if self.imu_offset is not None:
+                    self.straight_forward_active = True
+                    self.straight_forward_heading = self.current_imu_yaw
+                    self.auto_heading_active = False
+                    self.auto_lock_active = False
+                    self.pid_active = False
+                    self.heading_pid_integral = 0.0
+                    self.heading_pid_last_error = 0.0
+                    self.get_logger().info(f'STRAIGHT FORWARD ACTIVATED - Locked heading: {self.straight_forward_heading:.2f}')
+                else:
+                    self.get_logger().info('Cannot activate straight forward - IMU offset not set yet')
+            self.button7_last_state = button7_current_state
+        
         axes5_value = msg.axes[5]
         current_max_speed = 8.0 + (1.0 - axes5_value) * (17.0 - 8.0) / 2.0
         
-        # Extract velocities from joystick
-        vy = msg.axes[1] * current_max_speed    # Forward/backward
-        vx = 0.0
-        wz = msg.axes[2] * self.max_angular_speed # Rotation
+        vy = msg.axes[3] * current_max_speed
+        vx = msg.axes[2] * -current_max_speed
+        wz = msg.axes[0] * self.max_angular_speed
         
-        # Apply manual PID control if active (button 6 pressed - go to zero)
-        if self.pid_active and self.imu_offset is not None:  # Changed from zero_deg to imu_offset
+        current_time = self.get_clock().now()
+        
+        if abs(msg.axes[0]) > 0.1:
+            self.last_manual_rotation_time = current_time
+            if self.auto_lock_active:
+                self.auto_lock_active = False
+                self.get_logger().info('AUTO LOCK DEACTIVATED - Manual rotation detected')
+        
+        elif self.last_manual_rotation_time is not None:
+            time_since_rotation = (current_time - self.last_manual_rotation_time).nanoseconds / 1e9
+            if time_since_rotation > 0.5 and not self.pid_active and not self.auto_heading_active and not self.straight_forward_active:
+                if not self.auto_lock_active:
+                    self.auto_lock_active = True
+                    self.locked_heading = self.current_imu_yaw
+                    self.heading_pid_integral = 0.0
+                    self.heading_pid_last_error = 0.0
+                    self.get_logger().info(f'AUTO LOCK ACTIVATED - Locked heading: {self.locked_heading:.2f}')
+        
+        if self.pid_active and self.imu_offset is not None:
             pid_output = self.calculate_pid_control_to_zero()
             wz = pid_output
             
-            # Check if we've reached the target angle (within tolerance)
-            error = abs(self.zero_deg - self.current_imu_yaw)  # zero_deg is now 0.0
+            error = abs(self.zero_deg - self.current_imu_yaw)
             if error > 180.0:
                 error = 360.0 - error
             
-            if error < 0.1:  # Within tolerance of target
+            if error < 0.3:
                 self.pid_active = False
                 self.get_logger().info(f'MANUAL PID DEACTIVATED - Zero target reached! Error: {error:.2f} degrees')
         
-        # Apply automatic heading control if active and no manual rotation input
-        elif self.auto_heading_active and abs(msg.axes[2]) < 0.1:  # No manual rotation input
+        elif self.straight_forward_active and self.imu_offset is not None:
+            if abs(msg.axes[3]) > 0.1:
+                pid_output = self.calculate_pid_control_to_straight_heading()
+                wz = pid_output
+                
+                error = abs(self.straight_forward_heading - self.current_imu_yaw)
+                if error > 180.0:
+                    error = 360.0 - error
+                
+                if error < 1.0:
+                    pass
+            else:
+                self.straight_forward_active = False
+                self.get_logger().info('STRAIGHT FORWARD DEACTIVATED - No forward movement')
+        
+        elif self.auto_heading_active and abs(msg.axes[2]) < 0.1:
             pid_output = self.calculate_pid_control_to_target()
             wz = pid_output
             
-            # Check if we've reached the target heading (within tolerance)
             error = abs(self.target_heading - self.current_imu_yaw)
             if error > 180.0:
                 error = 360.0 - error
             
-            if error < 3.0:  # Within 3 degrees of target
+            if error < 3.0:
                 self.auto_heading_active = False
                 self.get_logger().info(f'AUTO HEADING DEACTIVATED - Target reached! Error: {error:.2f} degrees')
         
-        # If there's manual rotation input, disable auto heading
+        elif self.auto_lock_active and self.imu_offset is not None:
+            pid_output = self.calculate_pid_control_to_locked_heading()
+            wz = pid_output
+        
         elif abs(msg.axes[2]) > 0.1:
             if self.auto_heading_active:
                 self.auto_heading_active = False
                 self.get_logger().info('AUTO HEADING OVERRIDDEN - Manual rotation detected')
+            if self.straight_forward_active:
+                self.straight_forward_active = False
+                self.get_logger().info('STRAIGHT FORWARD OVERRIDDEN - Manual rotation detected')
+            if self.auto_lock_active:
+                self.auto_lock_active = False
+                self.get_logger().info('AUTO LOCK OVERRIDDEN - Manual rotation detected')
         
-        # Calculate wheel speeds using omni-directional kinematics
         wheel_speeds = self.calculate_wheel_speeds(vx, vy, wz)
         
-        # Publish wheel speeds
         self.publish_wheel_speeds(wheel_speeds)
 
     def calculate_pid_control_to_zero(self):
-        """PID control to return to zero degree reference (which is 0.0 after offset)"""
-        # Work with degrees since IMU outputs degrees
-        error = self.zero_deg - self.current_imu_yaw  # zero_deg is 0.0, so error = -current_imu_yaw
+        error = self.zero_deg - self.current_imu_yaw
         
-        # Normalize error to [-180, 180] degrees
         while error > 180.0:
             error -= 360.0
         while error < -180.0:
             error += 360.0
         
-        self.pid_integral += error
-        derivative = error - self.pid_last_error
+        self.zero_pid_integral += error
+        derivative = error - self.zero_pid_last_error
         
-        output = (self.pid_kp * error + 
-                 self.pid_ki * self.pid_integral + 
-                 self.pid_kd * derivative)
+        output = (self.zero_pid_kp * error + 
+                 self.zero_pid_ki * self.zero_pid_integral + 
+                 self.zero_pid_kd * derivative)
         
         output = max(-self.max_angular_speed, min(self.max_angular_speed, output))
         
-        self.pid_last_error = error
+        self.zero_pid_last_error = error
         
-        # Debug PID
         self.get_logger().info(f'ZERO PID - Current: {self.current_imu_yaw:.2f}, Error: {error:.2f}, Output: {output:.2f}')
         
         return output
 
-    def calculate_pid_control_to_target(self):
-        """PID control to reach target heading"""
-        # Work with degrees since IMU outputs degrees
-        error = self.target_heading - self.current_imu_yaw
+    def calculate_pid_control_to_locked_heading(self):
+        error = self.locked_heading - self.current_imu_yaw
         
-        # Normalize error to [-180, 180] degrees
         while error > 180.0:
             error -= 360.0
         while error < -180.0:
             error += 360.0
         
-        self.pid_integral += error
-        derivative = error - self.pid_last_error
+        self.heading_pid_integral += error
+        derivative = error - self.heading_pid_last_error
         
-        output = (self.pid_kp * error + 
-                 self.pid_ki * self.pid_integral + 
-                 self.pid_kd * derivative)
+        output = (self.heading_pid_kp * error + 
+                 self.heading_pid_ki * self.heading_pid_integral + 
+                 self.heading_pid_kd * derivative)
         
         output = max(-self.max_angular_speed, min(self.max_angular_speed, output))
         
-        self.pid_last_error = error
+        self.heading_pid_last_error = error
         
-        # Debug PID
+        return output
+
+    def calculate_pid_control_to_target(self):
+        error = self.target_heading - self.current_imu_yaw
+        
+        while error > 180.0:
+            error -= 360.0
+        while error < -180.0:
+            error += 360.0
+        
+        self.heading_pid_integral += error
+        derivative = error - self.heading_pid_last_error
+        
+        output = (self.heading_pid_kp * error + 
+                 self.heading_pid_ki * self.heading_pid_integral + 
+                 self.heading_pid_kd * derivative)
+        
+        output = max(-self.max_angular_speed, min(self.max_angular_speed, output))
+        
+        self.heading_pid_last_error = error
+        
         self.get_logger().info(f'TARGET PID - Target: {self.target_heading:.2f}, Current: {self.current_imu_yaw:.2f}, Error: {error:.2f}, Output: {output:.2f}')
+        
+        return output
+
+    def calculate_pid_control_to_straight_heading(self):
+        error = self.straight_forward_heading - self.current_imu_yaw
+        
+        while error > 180.0:
+            error -= 360.0
+        while error < -180.0:
+            error += 360.0
+        
+        self.heading_pid_integral += error
+        derivative = error - self.heading_pid_last_error
+        
+        output = (self.heading_pid_kp * error + 
+                 self.heading_pid_ki * self.heading_pid_integral + 
+                 self.heading_pid_kd * derivative)
+        
+        output = max(-self.max_angular_speed, min(self.max_angular_speed, output))
+        
+        self.heading_pid_last_error = error
+        
+        self.get_logger().info(f'STRAIGHT PID - Target: {self.straight_forward_heading:.2f}, Current: {self.current_imu_yaw:.2f}, Error: {error:.2f}, Output: {output:.2f}')
         
         return output
 
@@ -241,11 +332,10 @@ class OmniKinematicsNode(Node):
         return angle
 
     def calculate_wheel_speeds(self, vx, vy, wz):
-        # Wheel configuration for 3-wheel omni robot
         wheel_angles = [
-            7*math.pi/6,    # Motor 0: Left wheel at 210 degrees
-            math.pi/2,      # Motor 1: Front wheel at 90 degrees  
-            11*math.pi/6    # Motor 2: Right wheel at 330 degrees
+            7*math.pi/6,
+            math.pi/2,
+            11*math.pi/6
         ]
         
         wheel_speeds = []
