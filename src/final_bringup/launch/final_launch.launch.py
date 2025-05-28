@@ -32,21 +32,21 @@ def generate_launch_description():
             respawn=True,
         ),
 
-        # ExecuteProcess(
-        #     cmd=[
-        #         'ros2', 'run', 'micro_ros_agent', 'micro_ros_agent',
-        #         'serial', '--dev', '/dev/ttyACM0',
-        #         '--baudrate', '115200'
-        #     ],
-        #     output='screen',
-        # ),
+        ExecuteProcess(
+            cmd=[
+                'ros2', 'run', 'micro_ros_agent', 'micro_ros_agent',
+                'serial', '--dev', '/dev/ttyACM0',
+                '--baudrate', '115200'
+            ],
+            output='screen',
+        ),
         
-        # ExecuteProcess(
-        #     cmd=[
-        #         'ros2', 'run', 'micro_ros_agent', 'micro_ros_agent',
-        #         'serial', '--dev', '/dev/ttyACM2',
-        #         '--baudrate', '115200'
-        #     ],
-        #     output='screen',
-        # ),
+        ExecuteProcess(
+            cmd=[
+                'ros2', 'run', 'micro_ros_agent', 'micro_ros_agent',
+                'serial', '--dev', '/dev/ttyACM2',
+                '--baudrate', '115200'
+            ],
+            output='screen',
+        ),
     ])

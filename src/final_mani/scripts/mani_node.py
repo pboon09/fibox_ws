@@ -16,7 +16,7 @@ class ManiNode(Node):
     def __init__(self):
         super().__init__('mani_node')
 
-        self.shoot_speed = 255.0
+        self.shoot_speed = 255.0 * 0.5
         self.push_speed = 255.0
         self.toggle_speed = 120.0
         
