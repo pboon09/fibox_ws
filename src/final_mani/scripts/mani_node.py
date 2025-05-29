@@ -426,10 +426,13 @@ class ManiNode(Node):
             self.set_motor_speeds([self.push_speed, -self.toggle_speed, -self.toggle_speed])
             time.sleep(4.0)
 
-            self.get_logger().info("SPIN Step 4 All motors OFF")
-            self.set_motor_speeds([0.0, 0.0, 0.0])
+            self.get_logger().info("SPIN Step 4: Motor1 OFF, Motor2&3 = Toggle ON")
+            self.set_motor_speeds([0.0, -self.toggle_speed, -self.toggle_speed])
             
-            self.get_logger().info("SPIN sequence completed")
+            # Update the toggle state to reflect that motors 2&3 are now on
+            self.triangle_toggle_state = True
+            
+            self.get_logger().info("SPIN sequence completed - Toggle state is now ON")
             
         except Exception as e:
             self.get_logger().error(f"Error in spin sequence: {e}")
