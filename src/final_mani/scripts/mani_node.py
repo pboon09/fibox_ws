@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
-from std_msgs.msg import Float64MultiArray, Float64, Int32
+from std_msgs.msg import Float64MultiArray, Float64, Int64
 import threading
 import time
 from final_mani.Callback import VisionPipeline
@@ -15,13 +15,13 @@ class ManiNode(Node):
     def __init__(self):
         super().__init__('mani_node')
 
-        self.enable_save_video = False #Change here
+        self.enable_save_video = False
         self.video_save_interval = 300
         self.frames = []
         self.frame_count = 0
         self.output_folder = None
 
-        self.shoot_speed = 150.0
+        self.shoot_speed = 255.0
         self.spin_speed = 255.0
         self.push_speed = 255.0
         self.toggle_speed = 120.0
@@ -37,12 +37,17 @@ class ManiNode(Node):
         self.triangle_toggle_state = False
         
         self.current_motor_speeds = [0.0, 0.0, 0.0]
+        self.current_imu_yaw = 0.0
+        self.target_reach_status = 0  # 0: idle, 1: reached, -1: not reached
         
         self.pipeline = None
         self.vision_thread_active = False
         self.latest_tracking_data = None
         self.latest_vis_img = None
         self.vision_lock = threading.Lock()
+
+        self.imu_offset = None
+        self.raw_imu_yaw = 0.0
         
         if self.enable_save_video:
             self.setup_video_saving()
@@ -53,6 +58,20 @@ class ManiNode(Node):
             Joy,
             '/joy',
             self.joy_callback,
+            10
+        )
+        
+        self.imu_sub = self.create_subscription(
+            Float64,
+            '/imu_yaw',
+            self.imu_callback,
+            10
+        )
+        
+        self.target_reach_sub = self.create_subscription(
+            Int64,
+            '/target_reach',
+            self.target_reach_callback,
             10
         )
         
@@ -69,8 +88,8 @@ class ManiNode(Node):
         )
         
         self.pilot_lamp_pub = self.create_publisher(
-            Int32,
-            '/pilot_lamp',
+            Int64,
+            '/pilot_lamp_toggle',
             10
         )
         
@@ -94,6 +113,31 @@ class ManiNode(Node):
         except Exception as e:
             self.get_logger().error(f"Failed to create output directory: {e}")
             self.enable_save_video = False
+
+    def imu_callback(self, msg):
+        self.raw_imu_yaw = msg.data
+        
+        if self.imu_offset is None:
+            self.imu_offset = msg.data
+            self.zero_deg = 0.0
+            self.current_imu_yaw = 0.0
+            self.get_logger().info(f'IMU offset set: {self.imu_offset:.2f}° (raw) -> 0.0° (offset)')
+        else:
+            self.current_imu_yaw = self.raw_imu_yaw - self.imu_offset
+            
+            while self.current_imu_yaw > 180.0:
+                self.current_imu_yaw -= 360.0
+            while self.current_imu_yaw < -180.0:
+                self.current_imu_yaw += 360.0
+
+    def target_reach_callback(self, msg):
+        self.target_reach_status = msg.data
+        if msg.data == 1:
+            self.get_logger().info("TARGET REACHED - Robot reached heading setpoint")
+        elif msg.data == -1:
+            self.get_logger().info("TARGET NOT REACHED - Robot moving to heading setpoint")
+        else:
+            self.get_logger().info("TARGET IDLE - No active heading target")
 
     def start_vision_thread(self):
         self.vision_thread_active = True
@@ -138,9 +182,17 @@ class ManiNode(Node):
             if tracking_data is None:
                 return
             
-            pilot_msg = Int32()
+            pilot_msg = Int64()
             pilot_msg.data = 1 if tracking_data.get('detected', False) else 0
             self.pilot_lamp_pub.publish(pilot_msg)
+            
+            if tracking_data.get('detected', False):
+                x = tracking_data.get('rel_x', 0)
+                y = tracking_data.get('rel_y', 0)
+                z = tracking_data.get('z', 0)
+                angle = tracking_data.get('angle', 0)
+                confidence = tracking_data.get('confidence', 0)
+                self.get_logger().info(f"TARGET FOUND - x={x:.2f}, y={y:.2f}, z={z:.2f}, angle={angle:.2f}, confidence={confidence:.2f}")
             
             if vis_img is not None:
                 cv2.imshow("Debug View", vis_img)
@@ -241,7 +293,7 @@ class ManiNode(Node):
             
             if tracking_data and tracking_data.get('detected', False):
                 self.get_logger().info("Target detected - Starting RealSense sequence")
-                self.realsense_sequence(tracking_data)
+                self.start_realsense_sequence(tracking_data)
             else:
                 self.get_logger().info("A pressed - No target detected, sequence not started")
                 
@@ -258,10 +310,17 @@ class ManiNode(Node):
             self.get_logger().info("Y pressed - All motors OFF")
             self.set_motor_speeds([0.0, 0.0, 0.0])
 
+    def start_realsense_sequence(self, tracking_data):
+        if self.realsense_active:
+            return
+        
+        self.realsense_active = True
+        realsense_thread = threading.Thread(target=self.realsense_sequence, args=(tracking_data,))
+        realsense_thread.daemon = True
+        realsense_thread.start()
+
     def realsense_sequence(self, tracking_data):
         try:
-            self.realsense_active = True
-            
             x = tracking_data.get('rel_x', 0)
             y = tracking_data.get('rel_y', 0)
             z = tracking_data.get('z', 0)
@@ -270,42 +329,41 @@ class ManiNode(Node):
             
             self.get_logger().info(f"RealSense: Executing sequence with data: x={x}, y={y}, z={z}, angle={angle}, confidence={confidence}")
             
+            # Step 1: Calculate and send target heading
+            target_heading = self.current_imu_yaw - ((90 - angle) * 5.0)
+
+            # Normalize to 0-360 range
+            while target_heading >= 360.0:
+                target_heading -= 360.0
+            while target_heading < 0.0:
+                target_heading += 360.0
+
             target_heading_msg = Float64()
-            target_heading_msg.data = float(angle)
+            target_heading_msg.data = float(target_heading)
             self.target_heading_pub.publish(target_heading_msg)
-            self.get_logger().info(f"RealSense Step 1: Target heading sent = {angle}")
+            self.get_logger().info(f"RealSense Step 1: Current IMU={self.current_imu_yaw:.2f}, Angle={angle:.2f}, Target heading sent={target_heading:.2f}")
             
-            min_speed = 50.0
-            shoot_speed = 200.0
-            if z > 0:
-                computed_speed = max(min_speed, min(shoot_speed, shoot_speed * (1.0 / z) * 100))
+            # Step 2: Wait until target is reached
+            self.get_logger().info("RealSense Step 2: Waiting for robot to reach target heading...")
+            timeout_counter = 0
+            max_timeout = 100  # 10 seconds timeout (0.1s * 100)
+            
+            while self.target_reach_status != 1 and timeout_counter < max_timeout:
+                time.sleep(0.1)
+                timeout_counter += 1
+                
+            if self.target_reach_status == 1:
+                self.get_logger().info("RealSense Step 2: Target heading reached successfully!")
             else:
-                computed_speed = min_speed
+                self.get_logger().warn("RealSense Step 2: Timeout waiting for target heading - continuing anyway")
             
-            self.get_logger().info(f"RealSense Step 2: Computed speed from distance z={z} -> speed={computed_speed}")
-            
-            self.get_logger().info(f"RealSense Step 3: Motors 2&3 spin at {computed_speed} for 4 seconds")
-            self.set_motor_speeds([0.0, computed_speed, computed_speed])
-            time.sleep(4.0)
-            
-            self.get_logger().info("RealSense Step 4: Motor 1 ON")
-            self.set_motor_speeds([-self.push_speed, computed_speed, computed_speed])
-            
-            self.get_logger().info("RealSense Step 5: Wait 4 seconds")
-            time.sleep(4.0)
-            
-            self.get_logger().info("RealSense Step 6: Motor1 = 255, Motor2&3 = 0")
-            self.set_motor_speeds([self.push_speed, 0.0, 0.0])
-            time.sleep(4.0)
-            
-            self.get_logger().info("RealSense Step 7: All motors OFF")
-            self.set_motor_speeds([0.0, 0.0, 0.0])
-            
+            # Step 3: Reset target heading to 0
             target_heading_msg.data = 0.0
             self.target_heading_pub.publish(target_heading_msg)
-            self.get_logger().info("RealSense Step 8: Heading reset to 0")
+            self.get_logger().info("RealSense Step 3: Target heading reset to 0")
             
-            self.get_logger().info("RealSense sequence completed successfully")
+            # Step 4: Sequence completed - do nothing else (no shooting)
+            self.get_logger().info("RealSense sequence completed - robot is now aligned and ready")
             
         except Exception as e:
             self.get_logger().error(f"Error in RealSense sequence: {e}")
@@ -414,7 +472,6 @@ def main(args=None):
         node.cleanup()
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

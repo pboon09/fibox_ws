@@ -50,3 +50,5 @@ def generate_launch_description():
         #     output='screen',
         # ),
     ])
+
+#ros2 run micro_ros_agent micro_ros_agent serial -b 115200 --dev /dev/ttyACM0

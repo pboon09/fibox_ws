@@ -111,7 +111,7 @@ class VisionPipeline:
             
         # Get frame from camera
         ret, color_frame, depth_frame = self.camera.get_frame()
-        color_frame = cv2.flip(color_frame, 0)
+        # color_frame = cv2.flip(color_frame, 0)
         if not ret or color_frame is None:
             print("Failed to get frame from camera")
             return None, None
