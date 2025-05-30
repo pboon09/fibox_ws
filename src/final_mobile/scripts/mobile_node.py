@@ -129,11 +129,17 @@ class OmniKinematicsNode(Node):
         # Get movement commands
         if self.ping == 1:
             vy = msg.axes[3] * current_max_speed
-            vx = msg.axes[2] * -current_max_speed
+            if abs(msg.axes[2]) > 0.5:
+                vx = msg.axes[2] * -current_max_speed
+            else:
+                vx = 0.0
             wz = msg.axes[0] * current_max_angular_speed
         else:
             vy = msg.axes[1] * current_max_speed
-            vx = msg.axes[0] * -current_max_speed
+            if abs(msg.axes[0]) > 0.5:
+                vx = msg.axes[0] * -current_max_speed
+            else:
+                vx = 0.0
             wz = msg.axes[2] * current_max_angular_speed
         
         # Handle auto heading mode - only when target heading is not 0

@@ -433,7 +433,10 @@ class ManiNode(Node):
             
             self.get_logger().info("SPIN Step 2: Motor1&3 = 255")
             self.set_motor_speeds([-self.push_speed, 0.0, self.spin_speed])
-            time.sleep(1.0)
+            time.sleep(0.7)
+
+            self.set_motor_speeds([-self.push_speed, -self.toggle_speed, self.spin_speed])
+            time.sleep(0.3)
             
             self.get_logger().info("SPIN Step 3: Motor1 = 255, Motor2&3 = Toggle")
             self.set_motor_speeds([self.push_speed, -self.toggle_speed, -self.toggle_speed])
