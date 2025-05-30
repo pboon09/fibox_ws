@@ -16,6 +16,10 @@ class OmniKinematicsNode(Node):
         self.max_speed = 20.0
         self.max_angular_speed = 30.0
         
+        # Deadzone parameters
+        self.linear_deadzone = 0.2  # Deadzone for linear movement
+        self.angular_deadzone = 0.1  # Deadzone for angular movement
+        
         self.imu_offset = None
         self.current_imu_yaw = 0.0
         self.raw_imu_yaw = 0.0
@@ -73,6 +77,29 @@ class OmniKinematicsNode(Node):
         self.get_logger().info(f'Robot radius: {self.robot_radius}m')
         self.get_logger().info(f'Max speed: {self.max_speed}m/s')
         self.get_logger().info(f'Max angular speed: {self.max_angular_speed}rad/s')
+        self.get_logger().info(f'Linear deadzone: {self.linear_deadzone}')
+        self.get_logger().info(f'Angular deadzone: {self.angular_deadzone}')
+
+    def apply_smooth_deadzone(self, value, deadzone):
+        """Apply smooth deadzone with gradual acceleration after threshold"""
+        if abs(value) < deadzone:
+            return 0.0
+        
+        # Calculate sign
+        sign = 1.0 if value > 0 else -1.0
+        
+        # Get absolute value
+        abs_value = abs(value)
+        
+        # Map from [deadzone, 1.0] to [0.0, 1.0] smoothly
+        # This creates a smooth ramp from 0 at the deadzone edge to full speed at stick limit
+        normalized = (abs_value - deadzone) / (1.0 - deadzone)
+        
+        # Apply a smoothing curve (quadratic for even smoother acceleration)
+        # You can change this to just 'normalized' for linear, or 'normalized ** 3' for even smoother start
+        smoothed = normalized ** 2
+        
+        return sign * smoothed
 
     def imu_callback(self, msg):
         self.raw_imu_yaw = msg.data
@@ -126,24 +153,28 @@ class OmniKinematicsNode(Node):
         current_max_speed = 5.0 + (1.0 - boost) * (30.0 - 5.0) / 2.0
         current_max_angular_speed = 15.0 + (1.0 - boost) * (50.0 - 15.0) / 2.0
         
-        # Get movement commands
+        # Get raw joystick values
         if self.ping == 1:
-            vy = msg.axes[3] * current_max_speed
-            if abs(msg.axes[2]) > 0.5:
-                vx = msg.axes[2] * -current_max_speed
-            else:
-                vx = 0.0
-            wz = msg.axes[0] * current_max_angular_speed
+            raw_vy = msg.axes[3]
+            raw_vx = msg.axes[2]
+            raw_wz = msg.axes[0]
         else:
-            vy = msg.axes[1] * current_max_speed
-            if abs(msg.axes[0]) > 0.5:
-                vx = msg.axes[0] * -current_max_speed
-            else:
-                vx = 0.0
-            wz = msg.axes[2] * current_max_angular_speed
+            raw_vy = msg.axes[1]
+            raw_vx = msg.axes[0]
+            raw_wz = msg.axes[2]
+        
+        # Apply smooth deadzone to get normalized values (-1 to 1)
+        normalized_vy = self.apply_smooth_deadzone(raw_vy, self.linear_deadzone)
+        normalized_vx = self.apply_smooth_deadzone(raw_vx, self.linear_deadzone)
+        normalized_wz = self.apply_smooth_deadzone(raw_wz, self.angular_deadzone)
+        
+        # Scale by current max speeds
+        vy = normalized_vy * current_max_speed
+        vx = normalized_vx * -current_max_speed  # Keep the inversion
+        wz = normalized_wz * current_max_angular_speed
         
         # Handle auto heading mode - only when target heading is not 0
-        if self.auto_heading_active and abs(self.target_heading) > 0.1 and abs(msg.axes[2]) < 0.1:
+        if self.auto_heading_active and abs(self.target_heading) > 0.1 and abs(normalized_wz) < 0.01:
             pid_output = self.calculate_pid_control_to_target(current_max_angular_speed)
             wz = pid_output
             
@@ -164,8 +195,8 @@ class OmniKinematicsNode(Node):
                 self.get_logger().info(f'TARGET REACHED! Error: {error:.2f} degrees. PID stopped. Free to turn manually until new setpoint.')
                 self.publish_target_reach_status()
         
-        # Manual rotation overrides
-        elif abs(msg.axes[2]) > 0.1:
+        # Manual rotation overrides (check normalized value for more consistent behavior)
+        elif abs(normalized_wz) > 0.01:
             if self.auto_heading_active:
                 self.auto_heading_active = False
                 self.get_logger().info('AUTO HEADING OVERRIDDEN - Manual rotation detected')

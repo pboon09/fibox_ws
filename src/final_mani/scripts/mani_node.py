@@ -9,6 +9,7 @@ import time
 from final_mani.Callback import VisionPipeline
 import cv2
 import numpy as np
+import math
 
 
 class ManiNode(Node):
@@ -21,6 +22,14 @@ class ManiNode(Node):
         self.frame_count = 0
         self.output_folder = None
 
+        # Shooting physics parameters
+        self.max_motor_speed = 255.0
+        self.projectile_max_speed = 8.74  # m/s
+        self.launch_angle = 20.0  # degrees
+        self.max_y = 3.3  # meters
+        self.max_x = 4.3  # meters
+        self.gravity = 9.81  # m/s^2
+
         self.shoot_speed = 255.0
         self.spin_speed = 255.0
         self.push_speed = 255.0
@@ -30,6 +39,10 @@ class ManiNode(Node):
         self.prev_triangle = False
         self.prev_circle = False
         self.prev_a = False
+        
+        # Axis tracking for new controls
+        self.prev_axis_6 = 0.0
+        self.prev_axis_7 = 0.0
         
         self.shoot_active = False
         self.spin_active = False
@@ -97,11 +110,41 @@ class ManiNode(Node):
         self.pilot_timer = self.create_timer(0.1, self.update_pilot_lamp)
         
         self.get_logger().info("Mani Node Started")
-        self.get_logger().info("X: Shoot sequence | Y: Toggle motors 1&2 | B: Spin sequence | A: RealSense sequence (only when detected)")
+        self.get_logger().info("X: Shoot based on distance | Y: Toggle motors 1&2 | B: Spin sequence | A: RealSense sequence")
+        self.get_logger().info("Axis 7: Up=25% speed, Down=75% speed | Axis 6: Left=50% speed, Right=100% speed")
+        self.get_logger().info(f"Physics params: Max speed={self.projectile_max_speed}m/s, Angle={self.launch_angle}°")
         if self.enable_save_video:
             self.get_logger().info(f"Video saving enabled - Output folder: {self.output_folder}")
         else:
             self.get_logger().info("Video saving disabled")
+
+    def calculate_shoot_speed_from_distance(self, z_distance):
+        """Calculate required motor speed based on target distance using projectile physics"""
+        try:
+            # Convert angle to radians
+            angle_rad = math.radians(self.launch_angle)
+            
+            # Calculate required initial velocity for given distance
+            # Using projectile motion equation: d = v0^2 * sin(2θ) / g
+            # Solving for v0: v0 = sqrt(d * g / sin(2θ))
+            
+            required_velocity = math.sqrt(z_distance * self.gravity / math.sin(2 * angle_rad))
+            
+            # Clamp to max velocity
+            required_velocity = min(required_velocity, self.projectile_max_speed)
+            
+            # Convert velocity to motor speed (linear mapping)
+            # Assuming linear relationship between motor speed and projectile velocity
+            motor_speed_ratio = required_velocity / self.projectile_max_speed
+            motor_speed = motor_speed_ratio * self.max_motor_speed
+            
+            self.get_logger().info(f"Distance: {z_distance:.2f}m -> Required velocity: {required_velocity:.2f}m/s -> Motor speed: {motor_speed:.0f} ({motor_speed_ratio*100:.0f}%)")
+            
+            return motor_speed
+            
+        except Exception as e:
+            self.get_logger().error(f"Error calculating shoot speed: {e}")
+            return self.max_motor_speed * 0.5  # Default to 50% on error
 
     def setup_video_saving(self):
         import os
@@ -254,6 +297,34 @@ class ManiNode(Node):
     def joy_callback(self, msg):
         if len(msg.buttons) < 5:
             return
+        
+        # Check if we have axes data
+        if len(msg.axes) >= 8:
+            axis_6 = msg.axes[6]
+            axis_7 = msg.axes[7]
+            
+            # Axis 7 handling (up/down on d-pad)
+            if axis_7 != self.prev_axis_7 and axis_7 != 0:
+                if not self.shoot_active and not self.spin_active and not self.realsense_active:
+                    if axis_7 == 1:  # Up
+                        self.get_logger().info("Axis 7 UP - Starting SHOOT sequence at 25% speed")
+                        self.start_shoot_sequence(speed_percentage=0.25)
+                    elif axis_7 == -1:  # Down
+                        self.get_logger().info("Axis 7 DOWN - Starting SHOOT sequence at 75% speed")
+                        self.start_shoot_sequence(speed_percentage=0.75)
+            
+            # Axis 6 handling (left/right on d-pad)
+            if axis_6 != self.prev_axis_6 and axis_6 != 0:
+                if not self.shoot_active and not self.spin_active and not self.realsense_active:
+                    if axis_6 == -1:  # Left
+                        self.get_logger().info("Axis 6 LEFT - Starting SHOOT sequence at 50% speed")
+                        self.start_shoot_sequence(speed_percentage=0.50)
+                    elif axis_6 == 1:  # Right
+                        self.get_logger().info("Axis 6 RIGHT - Starting SHOOT sequence at 100% speed")
+                        self.start_shoot_sequence(speed_percentage=1.00)
+            
+            self.prev_axis_6 = axis_6
+            self.prev_axis_7 = axis_7
             
         a_pressed = msg.buttons[0]
         b_pressed = msg.buttons[1]
@@ -269,8 +340,8 @@ class ManiNode(Node):
         
         if x_pressed and not self.prev_square:
             if not self.shoot_active and not self.spin_active and not self.realsense_active:
-                self.get_logger().info("X pressed - Starting SHOOT sequence")
-                self.start_shoot_sequence()
+                self.get_logger().info("X pressed - Starting SHOOT sequence based on distance")
+                self.start_distance_based_shoot()
         
         if y_pressed and not self.prev_circle:
             if not self.shoot_active and not self.spin_active and not self.realsense_active:
@@ -285,6 +356,27 @@ class ManiNode(Node):
         self.prev_square = x_pressed
         self.prev_triangle = b_pressed
         self.prev_circle = y_pressed
+
+    def start_distance_based_shoot(self):
+        """Start shoot sequence with speed calculated from target distance"""
+        try:
+            with self.vision_lock:
+                tracking_data = self.latest_tracking_data
+            
+            if tracking_data and tracking_data.get('detected', False):
+                z_distance = tracking_data.get('z', 0)
+                if z_distance > 0:
+                    calculated_speed = self.calculate_shoot_speed_from_distance(z_distance)
+                    speed_percentage = calculated_speed / self.max_motor_speed
+                    self.get_logger().info(f"Target detected at {z_distance:.2f}m - Starting shoot sequence")
+                    self.start_shoot_sequence(speed_percentage=speed_percentage)
+                else:
+                    self.get_logger().warn("Target detected but invalid distance data - NOT shooting")
+            else:
+                self.get_logger().info("X pressed - No target detected, NOT shooting")
+                
+        except Exception as e:
+            self.get_logger().error(f"Error in distance-based shoot: {e}")
 
     def check_and_execute_realsense(self):
         try:
@@ -383,33 +475,36 @@ class ManiNode(Node):
         finally:
             self.realsense_active = False
 
-    def start_shoot_sequence(self):
+    def start_shoot_sequence(self, speed_percentage=1.0):
         if self.shoot_active:
             return
         
         self.shoot_active = True
-        shoot_thread = threading.Thread(target=self.shoot_sequence)
+        shoot_thread = threading.Thread(target=self.shoot_sequence, args=(speed_percentage,))
         shoot_thread.daemon = True
         shoot_thread.start()
 
-    def shoot_sequence(self):
+    def shoot_sequence(self, speed_percentage=1.0):
         try:
-            self.get_logger().info("SHOOT Step 1: Motors 2&3 = 255")
-            self.set_motor_speeds([0.0, self.shoot_speed, self.shoot_speed])
+            # Calculate actual motor speeds based on percentage
+            actual_shoot_speed = self.shoot_speed * speed_percentage
+            
+            self.get_logger().info(f"SHOOT Step 1: Motors 2&3 = {actual_shoot_speed:.0f} ({speed_percentage*100:.0f}% speed)")
+            self.set_motor_speeds([0.0, actual_shoot_speed, actual_shoot_speed])
             time.sleep(4.0)
             
-            self.get_logger().info("SHOOT Step 2: All motors = 255")
-            self.set_motor_speeds([-self.push_speed, self.shoot_speed, self.shoot_speed])
+            self.get_logger().info(f"SHOOT Step 2: All motors at {speed_percentage*100:.0f}% speed")
+            self.set_motor_speeds([-self.push_speed, actual_shoot_speed, actual_shoot_speed])
             time.sleep(2.0)
             
-            self.get_logger().info("SHOOT Step 3: Motor2&3 = 0, Motor1 = 255")
+            self.get_logger().info(f"SHOOT Step 3: Motor2&3 = 0, Motor1 = {self.push_speed:.0f}")
             self.set_motor_speeds([self.push_speed, 0.0, 0.0])
             time.sleep(1.0)
             
             self.get_logger().info("SHOOT Step 4: All motors OFF")
             self.set_motor_speeds([0.0, 0.0, 0.0])
             
-            self.get_logger().info("SHOOT sequence completed")
+            self.get_logger().info(f"SHOOT sequence completed at {speed_percentage*100:.0f}% speed")
             
         except Exception as e:
             self.get_logger().error(f"Error in shoot sequence: {e}")
@@ -433,10 +528,10 @@ class ManiNode(Node):
             
             self.get_logger().info("SPIN Step 2: Motor1&3 = 255")
             self.set_motor_speeds([-self.push_speed, 0.0, self.spin_speed])
-            time.sleep(0.7)
+            time.sleep(0.5)
 
             self.set_motor_speeds([-self.push_speed, -self.toggle_speed, self.spin_speed])
-            time.sleep(0.3)
+            time.sleep(0.5)
             
             self.get_logger().info("SPIN Step 3: Motor1 = 255, Motor2&3 = Toggle")
             self.set_motor_speeds([self.push_speed, -self.toggle_speed, -self.toggle_speed])
