@@ -9,7 +9,7 @@ class OmniKinematicsNode(Node):
     def __init__(self):
         super().__init__('omni_kinematics_node')
 
-        self.ping = 0
+        self.ping = 1
         
         self.wheel_radius = 0.06
         self.robot_radius = 0.16
@@ -21,9 +21,9 @@ class OmniKinematicsNode(Node):
         self.raw_imu_yaw = 0.0
         self.target_heading = 0.0
         
-        self.heading_pid_kp = 0.12
-        self.heading_pid_ki = 0.0
-        self.heading_pid_kd = 0.05
+        self.heading_pid_kp = 0.15
+        self.heading_pid_ki = 0.0   
+        self.heading_pid_kd = 0.01
         self.heading_pid_integral = 0.0
         self.heading_pid_last_error = 0.0
         
@@ -90,10 +90,19 @@ class OmniKinematicsNode(Node):
                 self.current_imu_yaw += 360.0
 
     def target_heading_callback(self, msg):
-        # Only activate if we receive a NEW setpoint (different from current target)
         new_target = msg.data
         
-        if abs(new_target) > 0.1 and (abs(new_target - self.target_heading) > 0.5 or self.target_reached):
+        # Reset condition: target is very close to zero
+        if abs(new_target) <= 0.1:
+            self.auto_heading_active = False
+            self.target_reached = True
+            self.target_reach_status = 0  # Idle
+            self.target_heading = 0.0  # Explicitly reset target heading
+            self.get_logger().info('TARGET CLEARED - Target heading is 0')
+            self.publish_target_reach_status()
+        
+        # New target condition: accept any non-zero target when we're idle OR target is significantly different
+        elif abs(new_target) > 0.1 and (self.target_reach_status == 0 or abs(new_target - self.target_heading) > 0.5):
             self.target_heading = new_target
             self.auto_heading_active = True
             self.target_reached = False
@@ -102,23 +111,23 @@ class OmniKinematicsNode(Node):
             self.heading_pid_last_error = 0.0
             self.get_logger().info(f'NEW TARGET RECEIVED - Target: {self.target_heading:.2f}, Current: {self.current_imu_yaw:.2f}')
             self.publish_target_reach_status()
-        elif abs(new_target) <= 0.1:
-            self.auto_heading_active = False
-            self.target_reached = True
-            self.target_reach_status = 0  # Idle
-            self.get_logger().info('TARGET CLEARED - Target heading is 0')
-            self.publish_target_reach_status()
+        else:
+            self.get_logger().info(f'TARGET IGNORED - Too similar to current target or system busy. New: {new_target:.2f}, Current: {self.target_heading:.2f}, Status: {self.target_reach_status}')
 
     def joy_callback(self, msg):
         self.last_joy_time = self.get_clock().now()
         
         # Speed control using axis 5
-        axes5_value = msg.axes[5]
-        current_max_speed = 5.0 + (1.0 - axes5_value) * (30.0 - 5.0) / 2.0
-        current_max_angular_speed = 8.0 + (1.0 - axes5_value) * (50.0 - 8.0) / 2.0
+        if self.ping == 1:
+            boost = msg.axes[4]
+        else:
+            boost = msg.axes[5]
+            
+        current_max_speed = 5.0 + (1.0 - boost) * (30.0 - 5.0) / 2.0
+        current_max_angular_speed = 15.0 + (1.0 - boost) * (50.0 - 15.0) / 2.0
         
         # Get movement commands
-        if self.ping is 1:
+        if self.ping == 1:
             vy = msg.axes[3] * current_max_speed
             vx = msg.axes[2] * -current_max_speed
             wz = msg.axes[0] * current_max_angular_speed
@@ -132,11 +141,17 @@ class OmniKinematicsNode(Node):
             pid_output = self.calculate_pid_control_to_target(current_max_angular_speed)
             wz = pid_output
             
-            error = abs(self.target_heading - self.current_imu_yaw)
-            if error > 180.0:
-                error = 360.0 - error
+            # Calculate error the same way as in PID control
+            error = self.target_heading - self.current_imu_yaw
             
-            if error < 1.5:
+            # Normalize to [-180, 180] range
+            while error > 180.0:
+                error -= 360.0
+            while error < -180.0:
+                error += 360.0
+            
+            # Check if target reached using absolute error
+            if abs(error) < 1.0:
                 self.auto_heading_active = False
                 self.target_reached = True
                 self.target_reach_status = 1  # Reached
@@ -174,7 +189,7 @@ class OmniKinematicsNode(Node):
         
         self.get_logger().info(f'TARGET PID - Target: {self.target_heading:.2f}, Current: {self.current_imu_yaw:.2f}, Error: {error:.2f}, Output: {output:.2f}')
         
-        return output
+        return output*2
 
     def normalize_angle(self, angle):
         while angle > math.pi:

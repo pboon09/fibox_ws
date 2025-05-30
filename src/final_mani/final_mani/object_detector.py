@@ -3,7 +3,7 @@
 
 import torch
 from ultralytics import YOLO
-from final_mani import config
+from final_mani import config # Import การตั้งค่า เช่น Model Path, Threshold, Target Class
 import cv2 # อาจจะต้องใช้สำหรับคำนวณ center หรืออื่นๆ ในอนาคต
 import numpy as np
 import os

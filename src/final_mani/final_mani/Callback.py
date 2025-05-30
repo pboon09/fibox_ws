@@ -7,13 +7,13 @@ import cv2
 from final_mani.camera_handler import CameraHandler
 from final_mani.object_detector import ObjectDetector
 from final_mani.depth_estimator import DepthEstimator
-import final_mani.visualization as vis  # Import the visualization module
+from final_mani import visualization as vis  # Import the visualization module
 
 class VisionPipeline:
     """
     Class to handle the vision pipeline, using all components to process inputs and return coordinates
     """
-    def __init__(self, camera_type='realsense', target_class='basketball_hoop', enable_visualization=False, enable_save_video=False):
+    def __init__(self, camera_type='realsense', target_class='person', enable_visualization=False, enable_save_video=False):
         """
         Initialize the vision pipeline
         
@@ -228,8 +228,8 @@ class VisionPipeline:
         tracking_data['raw_depth'] = raw_depth
         
         # Calculate relative coordinates
-        rel_x = float(tracking_data['center_x'] - self.origin_x)
-        rel_y = float(tracking_data['center_y'] - self.origin_y)
+        rel_x = float(tracking_data['center_x'] - self.origin_x) * z_value / 716
+        rel_y = float(tracking_data['center_y'] - self.origin_y) * z_value / 716
         tracking_data['rel_x'] = rel_x
         tracking_data['rel_y'] = rel_y
         

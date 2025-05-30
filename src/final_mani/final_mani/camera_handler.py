@@ -2,9 +2,10 @@
 # คำอธิบาย: คลาสสำหรับจัดการการเชื่อมต่อและอ่านเฟรมจากแหล่งภาพต่างๆ
 
 import cv2
-from final_mani import config
+from final_mani import config # Import การตั้งค่า เช่น Camera ID, Frame Size, FPS, Video Path
 import time
 import numpy as np
+import os
 
 # ตรวจสอบว่ามี RealSense SDK หรือไม่
 try:

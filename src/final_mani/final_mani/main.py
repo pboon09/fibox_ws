@@ -76,7 +76,7 @@ def main_app():
 
             # 1. อ่านเฟรมจากกล้อง
             ret, color_frame, depth_frame = camera.get_frame()
-            color_frame =  cv2.flip(color_frame, 0) # Flip ภาพในแนวแกน Y (แนวนอน)
+            # color_frame =  cv2.flip(color_frame, 0) # Flip ภาพในแนวแกน Y (แนวนอน) 
             if not ret:
                 print("Failed to get frame or end of video. Exiting.")
                 break # ออกจากลูปถ้าอ่านเฟรมไม่ได้

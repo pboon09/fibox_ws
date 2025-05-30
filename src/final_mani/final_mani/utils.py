@@ -2,7 +2,7 @@
 # คำอธิบาย: รวมฟังก์ชันช่วยเหลือทั่วไปสำหรับโปรแกรม
 
 import math
-from final_mani import config
+from final_mani import config # Import ค่า Config ที่ต้องใช้
 
 def estimate_z_from_bbox(bbox_width, bbox_height):
     """

@@ -2,20 +2,20 @@
 # คำอธิบาย: เก็บค่าตั้งค่าต่างๆ สำหรับโปรแกรมติดตามวัตถุ XYZ
 
 # --- การตั้งค่าโมเดล ---
-# YOLO_MODEL_PATH = r"yolo11l.pt"  # ตำแหน่งไฟล์โมเดล YOLO -> สำหรับ Development (ให้เปลี่ยนเป็น best.pt ตอนใช้งานจริง)
-YOLO_MODEL_PATH = '/home/pboon09/Documents/GitHub/fibox_ws/src/final_mani/final_mani/best(1).pt'
-DEPTH_MODEL_PATH = '/home/pboon09/Documents/GitHub/fibox_ws/src/final_mani/final_mani/model/final_calibrated_depth_model_outdoor_v2' # ตำแหน่งไฟล์โมเดล Regression สำหรับ Depth
+YOLO_MODEL_PATH = r"yolo11l.pt"  # ตำแหน่งไฟล์โมเดล YOLO -> สำหรับ Development (ให้เปลี่ยนเป็น best.pt ตอนใช้งานจริง)
+# YOLO_MODEL_PATH = r"best(2).pt"  # ตำแหน่งไฟล์โมเดล YOLO -> สำหรับ Production (ให้เปลี่ยนเป็น yolo11l.pt ตอนใช้งานจริง)
+DEPTH_MODEL_PATH = './model/final_calibrated_depth_model_outdoor_v2' # ตำแหน่งไฟล์โมเดล Regression สำหรับ Depth
 
 # --- การตั้งค่า YOLO ---
 CONF_THRESHOLD = 0.15           # ค่าความมั่นใจขั้นต่ำในการยอมรับผลการตรวจจับ
-TARGET_CLASS_NAME = 'basketball_hoop'    # ชื่อคลาสของวัตถุเป้าหมายที่ต้องการตรวจจับ -> สำหรับ Development (ให้เปลี่ยนเป็น basketball_hoop ตอนใช้งานจริง)
+TARGET_CLASS_NAME = ''    # ชื่อคลาสของวัตถุเป้าหมายที่ต้องการตรวจจับ -> สำหรับ Development (ให้เปลี่ยนเป็น basketball_hoop ตอนใช้งานจริง)
 
 # --- การตั้งค่ากล้อง ---
 CAMERA_ID = 0                   # หมายเลข ID ของกล้อง (0 คือกล้องหลักของเครื่อง)
 FRAME_WIDTH = 640               # ความกว้างของเฟรมภาพที่ต้องการ
 FRAME_HEIGHT = 480              # ความสูงของเฟรมภาพที่ต้องการ
 FPS = 30                        # ค่า FPS ของกล้องที่ต้องการ
-VIDEO_FILE_PATH = "color_output.mp4" # <<< หากทดสอบเป็น Video (แก้ Path ตามต้องการ)
+VIDEO_FILE_PATH = r"C:\\Users\\bpbea\\Documents\\GitHub\\FIBOXVISION2025\\src\\video\\color_output.mp4" # <<< หากทดสอบเป็น Video (แก้ Path ตามต้องการ)
 
 # --- การตั้งค่าการประมาณค่า Depth สำรอง ---
 # (ใช้ในกรณีที่ RealSense หรือ Regression Model ใช้งานไม่ได้)

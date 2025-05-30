@@ -57,8 +57,8 @@ class Tracker:
             tracking_data['raw_depth'] = realsense_depth_raw
 
             # คำนวณพิกัดสัมพัทธ์กับ Origin (X ขวาเป็นบวก, Y ลงเป็นบวก ตาม pixel coord)
-            rel_x = float(tracking_data['center_x'] - origin_x)
-            rel_y = float(tracking_data['center_y'] - origin_y)
+            rel_x = float(tracking_data['center_x'] - origin_x) * current_z / 716
+            rel_y = float(tracking_data['center_y'] - origin_y) * current_z / 716
             tracking_data['rel_x'] = rel_x
             tracking_data['rel_y'] = rel_y
 

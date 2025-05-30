@@ -192,7 +192,7 @@ class ManiNode(Node):
                 z = tracking_data.get('z', 0)
                 angle = tracking_data.get('angle', 0)
                 confidence = tracking_data.get('confidence', 0)
-                self.get_logger().info(f"TARGET FOUND - x={x:.2f}, y={y:.2f}, z={z:.2f}, angle={angle:.2f}, confidence={confidence:.2f}")
+                # self.get_logger().info(f"TARGET FOUND - x={x:.2f}, y={y:.2f}, z={z:.2f}, angle={angle:.2f}, confidence={confidence:.2f}")
             
             if vis_img is not None:
                 cv2.imshow("Debug View", vis_img)
@@ -330,7 +330,7 @@ class ManiNode(Node):
             self.get_logger().info(f"RealSense: Executing sequence with data: x={x}, y={y}, z={z}, angle={angle}, confidence={confidence}")
             
             # Step 1: Calculate and send target heading
-            target_heading = self.current_imu_yaw - ((90 - angle) * 5.0)
+            target_heading = self.current_imu_yaw - angle
 
             # Normalize to 0-360 range
             while target_heading >= 360.0:
@@ -357,12 +357,25 @@ class ManiNode(Node):
             else:
                 self.get_logger().warn("RealSense Step 2: Timeout waiting for target heading - continuing anyway")
             
-            # Step 3: Reset target heading to 0
+            # Step 3: Reset target heading to 0 AND wait a moment
             target_heading_msg.data = 0.0
             self.target_heading_pub.publish(target_heading_msg)
             self.get_logger().info("RealSense Step 3: Target heading reset to 0")
             
-            # Step 4: Sequence completed - do nothing else (no shooting)
+            # Wait for the reset to be processed
+            time.sleep(0.2)
+            
+            # Step 4: Send a slightly different reset value to ensure state reset
+            # This helps reset the target_reached flag in the kinematics node
+            target_heading_msg.data = 0.01  # Very small non-zero value
+            self.target_heading_pub.publish(target_heading_msg)
+            time.sleep(0.1)
+            
+            # Then immediately reset to true zero
+            target_heading_msg.data = 0.0
+            self.target_heading_pub.publish(target_heading_msg)
+            
+            # Step 5: Sequence completed - do nothing else (no shooting)
             self.get_logger().info("RealSense sequence completed - robot is now aligned and ready")
             
         except Exception as e:
@@ -391,7 +404,7 @@ class ManiNode(Node):
             
             self.get_logger().info("SHOOT Step 3: Motor2&3 = 0, Motor1 = 255")
             self.set_motor_speeds([self.push_speed, 0.0, 0.0])
-            time.sleep(4.0)
+            time.sleep(1.0)
             
             self.get_logger().info("SHOOT Step 4: All motors OFF")
             self.set_motor_speeds([0.0, 0.0, 0.0])
@@ -424,7 +437,7 @@ class ManiNode(Node):
             
             self.get_logger().info("SPIN Step 3: Motor1 = 255, Motor2&3 = Toggle")
             self.set_motor_speeds([self.push_speed, -self.toggle_speed, -self.toggle_speed])
-            time.sleep(4.0)
+            time.sleep(1.0)
 
             self.get_logger().info("SPIN Step 4: Motor1 OFF, Motor2&3 = Toggle ON")
             self.set_motor_speeds([0.0, -self.toggle_speed, -self.toggle_speed])

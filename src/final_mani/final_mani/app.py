@@ -19,9 +19,7 @@ import os
 #             confidence = tracking_data['confidence']
 
 #             print(f"Tracking Data: x={x}, y={y}, z={z}, angle={angle}, confidence={confidence}")
-
-
-            
+ 
 # except KeyboardInterrupt:
 #     print("Exiting...")
 # finally:
@@ -36,7 +34,6 @@ pipeline = VisionPipeline(camera_type='realsense', enable_visualization=True, en
 output_folder = f"output_frames_{time.strftime('%Y%m%d_%H%M%S')}"  # Use current timestamp in folder name
 os.makedirs(output_folder, exist_ok=True)
 frames = []
-count = 0
 while True:
     tracking_data, vis_img = pipeline.process_single_frame()
     # Process tracking_data
@@ -44,7 +41,6 @@ while True:
     
     # Show visualization
     if vis_img is not None:
-        count +=1
         cv2.imshow("Debug View", vis_img)
         
         # Save the current frame to the folder
@@ -52,15 +48,8 @@ while True:
         cv2.imwrite(frame_filename, vis_img)
         
         frames.append(vis_img)
-        # if cv2.waitKey(1) & 0xFF == ord('q'):
-        #     pipeline.save_video(frames, "output7.mp4", fps=15)
-        #     break
-        print(f"Frame saved: {frame_filename} {count}")
-        if count % 300 == 0:
-            pipeline.save_video(frames, f"output{count}", fps=15)
-
         if cv2.waitKey(1) & 0xFF == ord('q'):
-            pipeline.save_video(frames, "output_end.mp4", fps=15)
+            pipeline.save_video(frames, "output7.mp4", fps=15)
             break
         
         if tracking_data['detected']:
@@ -71,15 +60,6 @@ while True:
             # confidence = tracking_data['confidence']
 
             print(f"Tracking Data: x={x}, y={y}, z={z}, angle={angle}")
-
-    if vis_img is None and count > 100:
-        pipeline.save_video(frames, "output_end_out.mp4", fps=15)
-        break
-
-
-
-
-
 
 pipeline.stop()
 cv2.destroyAllWindows()

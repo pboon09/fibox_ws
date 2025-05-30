@@ -2,7 +2,7 @@
 # คำอธิบาย: ฟังก์ชันสำหรับวาดองค์ประกอบต่างๆ ลงบนเฟรมภาพ
 
 import cv2
-from final_mani import config
+from final_mani import config # Import การตั้งค่าสี, ขนาด, ฯลฯ
 
 def draw_coordinate_system(image, orig_x, orig_y):
     """
